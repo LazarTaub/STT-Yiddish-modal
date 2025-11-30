@@ -1,0 +1,32 @@
+import gradio as gr
+from transformers import pipeline
+
+pipe = pipeline(
+    "automatic-speech-recognition",
+    model="openai/whisper-small"
+)
+
+def transcribe(audio):
+    if audio is None:
+        return "ריקארד אדער אפלאוד א פייל"
+    try:
+        result = pipe(
+            audio,
+            chunk_length_s=30,
+            generate_kwargs={"language": "yi", "task": "transcribe"}
+        )
+        return result["text"]
+    except Exception as e:
+        return f"Error: {e}"
+
+
+demo = gr.Interface(
+    fn=transcribe,
+    inputs=gr.Audio(sources=["microphone", "upload"], type="filepath", label="רעדט מאמע לשון"),
+    outputs=gr.Textbox(label="טרענסקריפשן"),
+    title="Yiddish Speech-to-Text – BlueCheck.Theck",
+    description="אידיש רעדט צו שרייבן",
+    allow_flagging="never"
+)
+
+demo.launch()
