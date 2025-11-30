@@ -1,25 +1,44 @@
+import os
+import io
 import gradio as gr
 import soundfile as sf
-import numpy as np
-from faster_whisper import WhisperModel
-import io
+from faster_whisper import WhisperModel, convert_model
 
 # -----------------------------
-# Load Whisper CTranslate2 INT8 (CPU-only)
+# Paths
+# -----------------------------
+LOCAL_MODEL_DIR = "models/whisper-small-ct2"
+
+# -----------------------------
+# Auto-convert Hugging Face model if not present
+# -----------------------------
+if not os.path.exists(LOCAL_MODEL_DIR):
+    print("CTranslate2 model not found. Converting from Hugging Face...")
+    convert_model(
+        model_name="openai/whisper-small",
+        output_dir=LOCAL_MODEL_DIR,
+        quantization="int8"  # CPU-efficient
+    )
+    print("Conversion done!")
+
+# -----------------------------
+# Load Whisper model
 # -----------------------------
 model = WhisperModel(
-    "whisper-small-ct2",
+    LOCAL_MODEL_DIR,
     device="cpu",
-    compute_type="int8"   # fastest for HF free-tier
+    compute_type="int8"
 )
 
+# -----------------------------
+# Constants
+# -----------------------------
 MAX_SECONDS = 180  # 3 minutes
 
 # -----------------------------
 # Transcription Function
 # -----------------------------
 def transcribe(audio):
-
     if audio is None:
         return "נעמט ביז 3 מינוט אודיאו אויפאמאל"
 
@@ -41,7 +60,6 @@ def transcribe(audio):
 
     text = " ".join([seg.text for seg in segments])
     return text
-
 
 # -----------------------------
 # Download Handler
@@ -87,4 +105,7 @@ with gr.Blocks(css="""
     btn_transcribe.click(transcribe, audio_in, text_out)
     btn_copy.click(None, text_out, _js="(x) => navigator.clipboard.writeText(x)")
 
+# -----------------------------
+# Launch Gradio App
+# -----------------------------
 demo.launch()
