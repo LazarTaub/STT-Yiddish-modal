@@ -1,32 +1,90 @@
 import gradio as gr
-from transformers import pipeline
+import soundfile as sf
+import numpy as np
+from faster_whisper import WhisperModel
+import io
 
-pipe = pipeline(
-    "automatic-speech-recognition",
-    model="openai/whisper-small"
+# -----------------------------
+# Load Whisper CTranslate2 INT8 (CPU-only)
+# -----------------------------
+model = WhisperModel(
+    "whisper-small-ct2",
+    device="cpu",
+    compute_type="int8"   # fastest for HF free-tier
 )
 
+MAX_SECONDS = 180  # 3 minutes
+
+# -----------------------------
+# Transcription Function
+# -----------------------------
 def transcribe(audio):
+
     if audio is None:
-        return "ריקארד אדער אפלאוד א פייל"
-    try:
-        result = pipe(
-            audio,
-            chunk_length_s=30,
-            generate_kwargs={"language": "yi", "task": "transcribe"}
+        return "נעמט ביז 3 מינוט אודיאו אויפאמאל"
+
+    audio_data, sr = sf.read(audio)
+
+    # Limit to 3 minutes
+    duration = len(audio_data) / sr
+    if duration > MAX_SECONDS:
+        return "די אודיאו איז צו לאנג. נעמט ביז 3 מינוט אודיאו אויפאמאל"
+
+    segments, info = model.transcribe(
+        audio_data,
+        beam_size=1,
+        language="yi",
+        task="transcribe",
+        vad_filter=True,
+        chunk_length=30
+    )
+
+    text = " ".join([seg.text for seg in segments])
+    return text
+
+
+# -----------------------------
+# Download Handler
+# -----------------------------
+def download_text(text):
+    return io.BytesIO(text.encode("utf-8"))
+
+# -----------------------------
+# Gradio UI
+# -----------------------------
+with gr.Blocks(css="""
+    body { background: radial-gradient(circle at center, #0a1e3d, #001a3d 70%); }
+    .gr-textbox textarea { height: 400px !important; font-size: 18px; }
+""") as demo:
+
+    gr.Markdown(
+        "<h1 style='text-align:center; color:royalblue;'>BlueCheck.tech ASR</h1>"
+        "<p style='text-align:center; color:royalblue;'>נעמט ביז 3 מינוט אודיאו אויפאמאל</p>"
+    )
+
+    with gr.Row():
+        audio_in = gr.Audio(
+            sources=["microphone", "upload"],
+            type="filepath",
+            label="Upload or Record Audio (3 min max)"
         )
-        return result["text"]
-    except Exception as e:
-        return f"Error: {e}"
 
+    text_out = gr.Textbox(
+        label="Transcription",
+        placeholder="Your text will show here...",
+        lines=20
+    )
 
-demo = gr.Interface(
-    fn=transcribe,
-    inputs=gr.Audio(sources=["microphone", "upload"], type="filepath", label="רעדט מאמע לשון"),
-    outputs=gr.Textbox(label="טרענסקריפשן"),
-    title="Yiddish Speech-to-Text – BlueCheck.Theck",
-    description="אידיש רעדט צו שרייבן",
-    allow_flagging="never"
-)
+    with gr.Row():
+        btn_transcribe = gr.Button("Transcribe", variant="primary")
+        btn_copy = gr.Button("Copy Text")
+        btn_download = gr.DownloadButton(
+            "Download .txt",
+            file_name="transcription.txt",
+            file=lambda: download_text(text_out.value)
+        )
+
+    btn_transcribe.click(transcribe, audio_in, text_out)
+    btn_copy.click(None, text_out, _js="(x) => navigator.clipboard.writeText(x)")
 
 demo.launch()
